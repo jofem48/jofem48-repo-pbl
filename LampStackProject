@@ -3,18 +3,19 @@ import csv
 from pprint import pprint
 from datetime import datetime
 
+now = datetime.now() 
 #date = datetime.now().strftime("%Y_%m_%d-%I:%M:%S_%p")
 #print(f"filename_{date}")")
-
 
 def lambda_handler(event, context):
     ec2 = boto3.resource('ec2')
     client = boto3.client('ec2')
     s3 = boto3.resource('s3')
-    instances = ec2.instances.filter(Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
+    instances = ec2.instances.all()#filter(Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
 
     details = []
     for instance in instances:
+      
         if instance.tags != None:
             for tags in instance.tags:
                 if tags["Key"] == 'Name' or tags["Key"] == 'TeamOwner':
@@ -23,18 +24,18 @@ def lambda_handler(event, context):
                     if tags["Key"] == 'TeamOwner':
                         owner = tags["Value"]
     #        print("Inastance Name - %s,  Instance Id - %s, Owner - %s " %(instancename,instance.id,owner))
-            details.append([instancename,instance.id,owner])
+            details.append([instancename,instance.id,owner,instance.state["Name"],instance.public_ip_address])
         else:
             instancename='-'
         print(details)
-            
-    local_file_name = '/tmp/application-developmnent-master-inventory.csv'
+    date_time = now.strftime ("%d-%m-%Y%H-%M-%S")        
+    local_file_name = '/tmp/'+date_time+'application-developmnent-master-inventory.csv'
     with open(local_file_name, 'w') as csvfile: 
          # creating a csv writer object
          csvwriter = csv.writer(csvfile)
          # writing the data rows
          csvwriter.writerows(details)
     # call s3 bucket
-    bucket = s3.Bucket('applicationdevelopmentaccountmasterinventory')
+    bucket = s3.Bucket('application-developmnent-master-inventory')
     # upload file from tmp to s3
-    bucket.upload_file('/tmp/application-developmnent-master-inventory.csv', local_file_name)
+    bucket.upload_file('/tmp/'+date_time+'application-developmnent-master-inventory.csv', local_file_name)
