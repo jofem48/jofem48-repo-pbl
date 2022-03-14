@@ -1,0 +1,75 @@
+#2022-03-12 Swapnil modified script by Jude
+import boto3
+import csv
+from pprint import pprint
+from datetime import datetime
+
+now = datetime.now()
+date = datetime.now().strftime("%Y_%m_%d-%I:%M:%S_%p")
+#print(f"filename_{date}")")
+
+def lambda_handler(event, context):
+    ec2 = boto3.resource('ec2')
+    client = boto3.client('ec2')
+    s3 = boto3.resource('s3')
+    instances = ec2.instances.filter(Filters=[{'Name': 'instance-state-name', 'Values': ['stopped','running','pending','stopping','shutting-down']}])
+    details = []
+    final_details = []
+    instancename='-'
+    owner='-'
+    OS='-'
+    all_tags = []
+    final_details.append(["EC2 Instances"])
+    final_details.append(["InstanceName","InstanceId","IpAddress","State","Owner",'OS','AllTags'])
+    for instance in instances:
+        
+        #print(instance.tags)
+        all_tags = instance.tags
+        if instance.tags != None:
+            
+            for tags in instance.tags:
+                if tags["Key"] == 'Name':
+                    instancename = tags["Value"]
+                    details = [instancename,instance.id,instance.private_ip_address,instance.state["Name"],owner,OS,all_tags]
+                if tags["Key"] == 'TeamOwner':
+                    owner = tags["Value"]
+                    details = [instancename,instance.id,instance.private_ip_address,instance.state["Name"],owner,OS,all_tags]
+                if tags["Key"] == 'OS':
+                    OS = tags["Value"]
+                    details = [instancename,instance.id,instance.private_ip_address,instance.state["Name"],owner,OS,all_tags]
+    
+            #These two lines are left here for troubleshooting purposes.
+            #print("Inastance Name - %s,  Instance Id - %s, OS - %s, Owner - %s " %(instancename,instance.id,OS,owner))
+            #details.append([instancename,instance.id,OS,owner,instance.state["Name"],instance.private_ip_address])
+            final_details.append(details)
+        else:
+            instancename='-'
+    #-------------Get workspaces details -------------
+    wp_client = boto3.client('workspaces')
+    response = wp_client.describe_workspaces()
+    Workspaces = response["Workspaces"]
+    
+    final_details.append([])
+    final_details.append(["Workspaces"])
+
+    final_details.append(["ComputerName","WorkspaceId","IpAddress","State","UserName","BundleId","WorkspaceProperties"])
+
+    for workspace in Workspaces:
+        details=[workspace['ComputerName'],workspace['WorkspaceId'],workspace['IpAddress'],workspace['State'],workspace['UserName'],workspace['BundleId'],workspace['WorkspaceProperties']]
+        final_details.append(details)
+    # printing account number from lambda ARN
+    lambda_function_arn = context.invoked_function_arn
+    aws_account_id = lambda_function_arn.split(":")[4]
+    
+    date = datetime.now().strftime("%Y_%m_%d-%I:%M:%S_%p")
+    local_file_name = '/tmp/application-dev-'+aws_account_id+'-master-inventory-'+date+'.csv'
+    with open(local_file_name, 'w') as csvfile:
+         # creating a csv writer object
+         csvwriter = csv.writer(csvfile)
+         # writing the data rows
+         csvwriter.writerows(final_details)
+    # call s3 bucket
+    bucket = s3.Bucket('application-developmnent-master-inventory')
+    # upload file from tmp to s3
+    bucket.upload_file('/tmp/application-dev-'+aws_account_id+'-master-inventory-'+date+'.csv', local_file_name)
+    print("file saved at "+'/tmp/application-dev-'+aws_account_id+'-master-inventory-'+date+'.csv')
